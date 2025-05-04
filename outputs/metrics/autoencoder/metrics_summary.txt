@@ -1,0 +1,5 @@
+Autoencoder Performance Metrics
+===============================
+
+ROC AUC: 0.767
+Average Precision: 0.591

@@ -1,0 +1,5 @@
+SVDD Performance Metrics
+=======================
+
+ROC AUC: 0.775
+Average Precision: 0.569

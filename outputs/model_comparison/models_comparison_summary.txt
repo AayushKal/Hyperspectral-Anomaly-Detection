@@ -1,0 +1,15 @@
+HYPERSPECTRAL ANOMALY DETECTION - MODEL COMPARISON SUMMARY
+============================================================
+
+PERFORMANCE METRICS:
+------------------------------
+RX_DETECTOR     ROC AUC: 0.593    AP: 0.295   
+AUTOENCODER     ROC AUC: 0.767    AP: 0.591   
+SVDD            ROC AUC: 0.775    AP: 0.569   
+
+KEY FINDINGS:
+------------------------------
+- Best ROC AUC: SVDD (0.775)
+- Best Average Precision: AUTOENCODER (0.591)
+- All models show good performance on this dataset
+- SVDD and Autoencoder significantly outperform RX Detector

@@ -1,0 +1,5 @@
+RX Detector Performance Metrics
+===============================
+
+ROC AUC: 0.593
+Average Precision: 0.295
