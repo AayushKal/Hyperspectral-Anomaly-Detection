@@ -42,7 +42,6 @@ class AdaptiveFusionDetector:
         """Find threshold that achieves target recall"""
         precision, recall, thresholds = precision_recall_curve(y_true, scores)
         
-        # Find closest recall to target
         recall_diff = np.abs(recall - target_recall)
         best_idx = np.argmin(recall_diff)
         
@@ -63,7 +62,6 @@ class AdaptiveFusionDetector:
         if not self.models:
             raise ValueError("Models not loaded. Call load_models() first.")
         
-        # First, optimize individual thresholds for target recall
         for model_name, model_data in self.models.items():
             scores = model_data['scores']
             y_true = model_data['y_true']
@@ -73,16 +71,13 @@ class AdaptiveFusionDetector:
             
             print(f"{model_name}: Threshold={threshold:.4f}, Recall={recall:.3f}, Precision={precision:.3f}")
         
-        # Normalize all scores
         normalized_scores = {}
         for name, data in self.models.items():
             normalized_scores[name] = self.normalize_scores(data['scores'])
         
-        # Optimize fusion weights if requested
         if optimize_weights and self.fusion_strategy == 'dynamic':
             self.model_weights = self._optimize_fusion_weights(normalized_scores)
         else:
-            # Equal weights as default
             self.model_weights = {name: 1.0 for name in self.models.keys()}
         
         self.is_trained = True
@@ -96,7 +91,6 @@ class AdaptiveFusionDetector:
         y_true = list(self.models.values())[0]['y_true']
         
         def objective(weights):
-            # Create weighted fusion
             fused_scores = np.zeros_like(y_true, dtype=float)
             total_weight = sum(weights)
             
@@ -105,21 +99,16 @@ class AdaptiveFusionDetector:
             
             fused_scores /= total_weight
             
-            # Find recall at target level
             _, recall, _ = self.find_recall_threshold(y_true, fused_scores, self.recall_target)
             
-            # Maximize recall
             return -recall
         
-        # Initialize weights
         n_models = len(normalized_scores)
         initial_weights = np.ones(n_models)
         bounds = [(0.1, 10)] * n_models
         
-        # Optimize
         result = minimize(objective, initial_weights, bounds=bounds, method='L-BFGS-B')
         
-        # Return normalized weights
         weights_dict = {}
         for i, name in enumerate(normalized_scores.keys()):
             weights_dict[name] = result.x[i]
@@ -133,15 +122,12 @@ class AdaptiveFusionDetector:
             raise ValueError("Model must be trained first")
         
         if model_scores is None:
-            # Use loaded models' scores
             model_scores = {name: data['scores'] for name, data in self.models.items()}
         
-        # Normalize scores
         normalized_scores = {}
         for name, scores in model_scores.items():
             normalized_scores[name] = self.normalize_scores(scores)
         
-        # Fuse scores using weights
         fused_scores = np.zeros_like(list(normalized_scores.values())[0])
         for name, scores in normalized_scores.items():
             fused_scores += self.model_weights[name] * scores
@@ -151,7 +137,6 @@ class AdaptiveFusionDetector:
     def predict_binary(self, model_scores=None, use_individual_thresholds=False):
         """Get binary predictions"""
         if use_individual_thresholds:
-            # Majority voting with recall-optimized thresholds
             votes = np.zeros_like(list(self.models.values())[0]['scores'])
             
             for name, threshold in self.thresholds.items():
@@ -159,10 +144,8 @@ class AdaptiveFusionDetector:
                 binary_pred = (scores > threshold).astype(int)
                 votes += binary_pred
             
-            # Majority rule (can be adjusted to require fewer votes)
             return (votes >= len(self.models) / 2).astype(int)
         else:
-            # Use fused scores with optimized threshold
             fused_scores = self.predict(model_scores)
             y_true = list(self.models.values())[0]['y_true']
             
@@ -199,18 +182,15 @@ class AdaptiveFusionDetector:
 
 def evaluate_fusion_performance(fusion_detector):
     """Evaluate fusion model performance"""
-    # Get binary predictions
     y_pred_binary = fusion_detector.predict_binary()
     y_pred_voting = fusion_detector.predict_binary(use_individual_thresholds=True)
     fused_scores = fusion_detector.predict()
     
     y_true = list(fusion_detector.models.values())[0]['y_true']
     
-    # Evaluate continuous scores
     roc_auc = roc_auc_score(y_true, fused_scores)
     avg_precision = average_precision_score(y_true, fused_scores)
     
-    # Evaluate binary predictions
     from sklearn.metrics import classification_report, confusion_matrix
     
     print("\nFusion Model Performance:")
@@ -236,7 +216,6 @@ def save_fusion_visualizations(fusion_detector, results, output_dir):
     """Save fusion visualizations"""
     os.makedirs(output_dir, exist_ok=True)
     
-    # Plot weights
     plt.figure(figsize=(10, 6))
     models = list(fusion_detector.model_weights.keys())
     weights = list(fusion_detector.model_weights.values())
@@ -244,7 +223,6 @@ def save_fusion_visualizations(fusion_detector, results, output_dir):
     plt.title('Fusion Model Weights (Recall-Optimized)', fontsize=14)
     plt.ylabel('Weight')
     
-    # Add value labels on bars
     for bar in bars:
         height = bar.get_height()
         plt.text(bar.get_x() + bar.get_width()/2., height,
@@ -254,7 +232,6 @@ def save_fusion_visualizations(fusion_detector, results, output_dir):
     plt.savefig(os.path.join(output_dir, 'fusion_weights.png'), dpi=300, bbox_inches='tight')
     plt.close()
     
-    # Plot ROC curve
     y_true = list(fusion_detector.models.values())[0]['y_true']
     fpr, tpr, _ = roc_curve(y_true, results['pred_scores'])
     
@@ -271,7 +248,6 @@ def save_fusion_visualizations(fusion_detector, results, output_dir):
     plt.close()
 
 def main():
-    # Create directory structure
     PROJECT_DIRS = {
         'models': 'models/fusion',
         'metrics': 'outputs/metrics/fusion',
@@ -281,29 +257,22 @@ def main():
     for dir_path in PROJECT_DIRS.values():
         os.makedirs(dir_path, exist_ok=True)
     
-    # Initialize and train fusion detector
     fusion_detector = AdaptiveFusionDetector(recall_target=0.85, fusion_strategy='dynamic')
     
-    # Load pre-trained models
     print("Loading pre-trained models...")
     fusion_detector.load_models()
     
-    # Train fusion model
     print("\nTraining fusion model...")
     fusion_detector.train(optimize_weights=True)
     
-    # Evaluate performance
     print("\nEvaluating fusion model...")
     results = evaluate_fusion_performance(fusion_detector)
     
-    # Save visualizations
     save_fusion_visualizations(fusion_detector, results, PROJECT_DIRS['metrics'])
     
-    # Save trained fusion model
     model_path = os.path.join(PROJECT_DIRS['models'], 'fusion_model.npz')
     fusion_detector.save_model(model_path)
     
-    # Save results
     results_path = os.path.join(PROJECT_DIRS['results'], 'fusion_results.npz')
     np.savez(results_path, **results)
     

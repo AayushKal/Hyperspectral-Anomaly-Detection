@@ -60,10 +60,8 @@ class AdaptiveFusionDetector:
         precision, recall, thresholds = precision_recall_curve(y_true, scores)
         f1_scores = 2 * (precision * recall) / (precision + recall + 1e-10)
         
-        # Filter thresholds that meet precision requirement
         valid_idx = precision >= self.min_precision
         if np.any(valid_idx):
-            # Among valid, maximize F1
             best_f1_idx = np.argmax(f1_scores[valid_idx])
             actual_idx = np.where(valid_idx)[0][best_f1_idx]
             optimal_threshold = thresholds[actual_idx]
@@ -71,7 +69,6 @@ class AdaptiveFusionDetector:
             achieved_precision = precision[actual_idx]
             achieved_f1 = f1_scores[actual_idx]
         else:
-            # If no threshold meets precision, return best F1
             best_idx = np.argmax(f1_scores)
             optimal_threshold = thresholds[best_idx]
             achieved_recall = recall[best_idx]
@@ -89,7 +86,6 @@ class AdaptiveFusionDetector:
         if not self.models:
             raise ValueError("Models not loaded. Call load_models() first.")
         
-        # Find optimal thresholds for each model
         for model_name, model_data in self.models.items():
             scores = model_data['scores']
             y_true = model_data['y_true']
@@ -99,16 +95,13 @@ class AdaptiveFusionDetector:
             
             print(f"{model_name}: Threshold={threshold:.4f}, Recall={recall:.3f}, Precision={precision:.3f}, F1={f1:.3f}")
         
-        # Normalize all scores
         normalized_scores = {}
         for name, data in self.models.items():
             normalized_scores[name] = self.normalize_scores(data['scores'])
         
-        # Optimize fusion weights if requested
         if optimize_weights and self.fusion_strategy == 'dynamic':
             self.model_weights = self._optimize_fusion_weights(normalized_scores)
         else:
-            # Equal weights as default
             self.model_weights = {name: 1.0 for name in self.models.keys()}
         
         self.is_trained = True
@@ -122,7 +115,6 @@ class AdaptiveFusionDetector:
         y_true = list(self.models.values())[0]['y_true']
         
         def objective(weights):
-            # Create weighted fusion
             fused_scores = np.zeros_like(y_true, dtype=float)
             total_weight = sum(weights)
             
@@ -131,21 +123,16 @@ class AdaptiveFusionDetector:
             
             fused_scores /= total_weight
             
-            # Find F1 with precision constraint
             _, _, _, f1 = self.find_constrained_threshold(y_true, fused_scores)
             
-            # Maximize F1
             return -f1
         
-        # Initialize weights
         n_models = len(normalized_scores)
         initial_weights = np.ones(n_models)
         bounds = [(0.1, 10)] * n_models
         
-        # Optimize
         result = minimize(objective, initial_weights, bounds=bounds, method='L-BFGS-B')
         
-        # Return normalized weights
         weights_dict = {}
         for i, name in enumerate(normalized_scores.keys()):
             weights_dict[name] = result.x[i]
@@ -159,15 +146,12 @@ class AdaptiveFusionDetector:
             raise ValueError("Model must be trained first")
         
         if model_scores is None:
-            # Use loaded models' scores
             model_scores = {name: data['scores'] for name, data in self.models.items()}
         
-        # Normalize scores
         normalized_scores = {}
         for name, scores in model_scores.items():
             normalized_scores[name] = self.normalize_scores(scores)
         
-        # Fuse scores using weights
         fused_scores = np.zeros_like(list(normalized_scores.values())[0])
         for name, scores in normalized_scores.items():
             fused_scores += self.model_weights[name] * scores
@@ -177,7 +161,6 @@ class AdaptiveFusionDetector:
     def predict_binary(self, model_scores=None, strategy='constrained'):
         """Get binary predictions with improved strategies"""
         if strategy == 'constrained':
-            # Use fused scores with constrained threshold
             fused_scores = self.predict(model_scores)
             y_true = list(self.models.values())[0]['y_true']
             
@@ -185,22 +168,17 @@ class AdaptiveFusionDetector:
             return (fused_scores > threshold).astype(int)
         
         elif strategy == 'confidence_filtered':
-            # Two-stage prediction: high + medium confidence
             fused_scores = self.predict(model_scores)
             y_true = list(self.models.values())[0]['y_true']
             
-            # Get base threshold
             base_threshold, _, _, _ = self.find_constrained_threshold(y_true, fused_scores)
             
-            # Create confidence levels
             high_threshold = base_threshold * 1.5
             predictions = np.zeros_like(fused_scores)
             
-            # High confidence anomalies
             high_confidence = fused_scores > high_threshold
             predictions[high_confidence] = 1
             
-            # Medium confidence: check model agreement
             medium_confidence = (fused_scores > base_threshold) & (fused_scores <= high_threshold)
             if np.any(medium_confidence):
                 agreement_count = self._count_model_agreement(model_scores, medium_confidence)
@@ -209,7 +187,6 @@ class AdaptiveFusionDetector:
             return predictions
         
         elif strategy == 'voting':
-            # Majority voting with optimized thresholds
             votes = np.zeros_like(list(self.models.values())[0]['scores'])
             
             for name, threshold in self.thresholds.items():
@@ -262,7 +239,6 @@ class AdaptiveFusionDetector:
 
 def evaluate_fusion_performance(fusion_detector):
     """Evaluate fusion model performance with multiple strategies"""
-    # Get binary predictions using different strategies
     y_pred_constrained = fusion_detector.predict_binary(strategy='constrained')
     y_pred_confidence = fusion_detector.predict_binary(strategy='confidence_filtered')
     y_pred_voting = fusion_detector.predict_binary(strategy='voting')
@@ -270,11 +246,9 @@ def evaluate_fusion_performance(fusion_detector):
     
     y_true = list(fusion_detector.models.values())[0]['y_true']
     
-    # Evaluate continuous scores
     roc_auc = roc_auc_score(y_true, fused_scores)
     avg_precision = average_precision_score(y_true, fused_scores)
     
-    # Evaluate binary predictions
     from sklearn.metrics import classification_report
     
     print("\nFusion Model Performance:")
@@ -304,7 +278,6 @@ def save_fusion_visualizations(fusion_detector, results, output_dir):
     """Save fusion visualizations including confusion matrices"""
     os.makedirs(output_dir, exist_ok=True)
     
-    # Plot weights
     plt.figure(figsize=(10, 6))
     models = list(fusion_detector.model_weights.keys())
     weights = list(fusion_detector.model_weights.values())
@@ -312,7 +285,6 @@ def save_fusion_visualizations(fusion_detector, results, output_dir):
     plt.title('Fusion Model Weights (F1-Optimized)', fontsize=14)
     plt.ylabel('Weight')
     
-    # Add value labels on bars
     for bar in bars:
         height = bar.get_height()
         plt.text(bar.get_x() + bar.get_width()/2., height,
@@ -322,50 +294,40 @@ def save_fusion_visualizations(fusion_detector, results, output_dir):
     plt.savefig(os.path.join(output_dir, 'fusion_weights.png'), dpi=300, bbox_inches='tight')
     plt.close()
     
-    # Create confusion matrices for all strategies
     y_true = list(fusion_detector.models.values())[0]['y_true']
     
-    # Define strategies and their predictions
     strategies = {
         'Constrained Threshold': results['pred_constrained'],
         'Confidence Filtered': results['pred_confidence'],
         'Majority Voting': results['pred_voting']
     }
     
-    # Create single figure with subplots for all confusion matrices
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     
     from sklearn.metrics import confusion_matrix
     
     for idx, (strategy_name, predictions) in enumerate(strategies.items()):
-        # Calculate confusion matrix
         cm = confusion_matrix(y_true, predictions)
         tn, fp, fn, tp = cm.ravel()
         
-        # Calculate metrics for the subtitle
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0
         
-        # Create heatmap
         im = axes[idx].imshow(cm, cmap='Blues')
         
-        # Add colorbar
         plt.colorbar(im, ax=axes[idx])
         
-        # Set ticks and labels
         axes[idx].set_xticks([0, 1])
         axes[idx].set_yticks([0, 1])
         axes[idx].set_xticklabels(['Normal', 'Anomaly'])
         axes[idx].set_yticklabels(['Normal', 'Anomaly'])
         
-        # Add text annotations
         for i in range(2):
             for j in range(2):
                 text = axes[idx].text(j, i, str(cm[i, j]),
                                    ha="center", va="center", color="black",
                                    fontsize=12, weight='bold')
         
-        # Add proportion text
         for i in range(2):
             for j in range(2):
                 proportion = cm[i, j] / cm.sum()
@@ -373,7 +335,6 @@ def save_fusion_visualizations(fusion_detector, results, output_dir):
                               ha="center", va="center", color="black",
                               fontsize=10)
         
-        # Set title with metrics
         axes[idx].set_title(f'{strategy_name}\nPrecision: {precision:.0%}, Recall: {recall:.0%}',
                            fontsize=12)
         axes[idx].set_xlabel('Predicted')
@@ -383,34 +344,27 @@ def save_fusion_visualizations(fusion_detector, results, output_dir):
     plt.savefig(os.path.join(output_dir, 'confusion_matrices_comparison.png'), dpi=300, bbox_inches='tight')
     plt.close()
     
-    # Create individual confusion matrices with larger size
     for strategy_name, predictions in strategies.items():
         plt.figure(figsize=(8, 6))
         
-        # Calculate confusion matrix
         cm = confusion_matrix(y_true, predictions)
         tn, fp, fn, tp = cm.ravel()
         
-        # Calculate metrics
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0
         
-        # Create heatmap
         im = plt.imshow(cm, cmap='Blues')
         plt.colorbar(im)
         
-        # Set ticks and labels
         plt.xticks([0, 1], ['Normal', 'Anomaly'])
         plt.yticks([0, 1], ['Normal', 'Anomaly'])
         
-        # Add text annotations
         for i in range(2):
             for j in range(2):
                 text = plt.text(j, i, str(cm[i, j]),
                                ha="center", va="center", color="black",
                                fontsize=14, weight='bold')
         
-        # Add proportion text
         for i in range(2):
             for j in range(2):
                 proportion = cm[i, j] / cm.sum()
@@ -418,7 +372,6 @@ def save_fusion_visualizations(fusion_detector, results, output_dir):
                         ha="center", va="center", color="black",
                         fontsize=11)
         
-        # Set title
         plt.title(f'Fusion Model ({strategy_name})\nPrecision: {precision:.0%}, Recall: {recall:.0%}',
                  fontsize=14)
         plt.xlabel('Predicted')
@@ -429,7 +382,6 @@ def save_fusion_visualizations(fusion_detector, results, output_dir):
                    dpi=300, bbox_inches='tight')
         plt.close()
     
-    # Plot Precision-Recall curve
     precision, recall, _ = precision_recall_curve(y_true, results['pred_scores'])
     
     plt.figure(figsize=(8, 6))
@@ -443,7 +395,6 @@ def save_fusion_visualizations(fusion_detector, results, output_dir):
     plt.savefig(os.path.join(output_dir, 'fusion_pr_curve.png'), dpi=300, bbox_inches='tight')
     plt.close()
     
-    # Plot ROC curve
     fpr, tpr, _ = roc_curve(y_true, results['pred_scores'])
     
     plt.figure(figsize=(8, 6))
@@ -459,7 +410,6 @@ def save_fusion_visualizations(fusion_detector, results, output_dir):
     plt.close()
 
 def main():
-    # Create directory structure with new paths to avoid overwriting
     PROJECT_DIRS = {
         'models': 'models/fusion_improved',
         'metrics': 'outputs/metrics/fusion_improved',
@@ -469,29 +419,22 @@ def main():
     for dir_path in PROJECT_DIRS.values():
         os.makedirs(dir_path, exist_ok=True)
     
-    # Initialize and train fusion detector with balanced approach
     fusion_detector = AdaptiveFusionDetector(f1_target=0.40, min_precision=0.25, fusion_strategy='dynamic')
     
-    # Load pre-trained models
     print("Loading pre-trained models...")
     fusion_detector.load_models()
     
-    # Train fusion model
     print("\nTraining fusion model...")
     fusion_detector.train(optimize_weights=True)
     
-    # Evaluate performance
     print("\nEvaluating fusion model...")
     results = evaluate_fusion_performance(fusion_detector)
     
-    # Save visualizations
     save_fusion_visualizations(fusion_detector, results, PROJECT_DIRS['metrics'])
     
-    # Save trained fusion model with new filename
     model_path = os.path.join(PROJECT_DIRS['models'], 'fusion_model_improved.npz')
     fusion_detector.save_model(model_path)
     
-    # Save results with new filename
     results_path = os.path.join(PROJECT_DIRS['results'], 'fusion_results_improved.npz')
     np.savez(results_path, **results)
     
